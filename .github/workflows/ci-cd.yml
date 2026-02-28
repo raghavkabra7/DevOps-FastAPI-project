@@ -9,7 +9,7 @@ on:
 
 env:
   PYTHON_VERSION: '3.11'
-  DOCKER_IMAGE: raghavkabra869/itemsapi  # Docker Hub username
+  DOCKER_IMAGE: raghavkabra7/itemsapi  # Docker Hub username
   AWS_REGION: us-east-1  # Update with your AWS region
 
 jobs:
