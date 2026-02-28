@@ -1,0 +1,303 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+  DOCKER_IMAGE: your-dockerhub-username/itemsapi  # Update with your Docker Hub username
+  AWS_REGION: us-east-1  # Update with your AWS region
+
+jobs:
+  # Stage 1: Code Quality & Linting
+  lint:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run Black formatter check
+        run: |
+          black --check app/ tests/
+
+      - name: Run Pylint
+        run: |
+          pylint app/ --fail-under=8.0
+
+  # Stage 2: Unit & Integration Tests
+  test:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: itemsdb
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run tests with coverage
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/itemsdb
+        run: |
+          pytest tests/ -v --cov=app --cov-report=xml --cov-report=html --cov-report=term-missing
+
+      - name: Upload coverage to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+
+      - name: Check coverage threshold
+        run: |
+          coverage report --fail-under=80
+
+  # Stage 3: SonarQube Code Analysis (Optional)
+  sonarqube:
+    name: SonarQube Analysis
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for better analysis
+
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        # Add sonar-project.properties file for configuration
+
+  # Stage 4: Build & Push Docker Image
+  build-and-push:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # Alternative: Login to AWS ECR
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     aws-region: ${{ env.AWS_REGION }}
+      
+      # - name: Login to Amazon ECR
+      #   id: login-ecr
+      #   uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Image vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_IMAGE }}:latest
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Stage 5: Deploy to Test Environment
+  deploy-test:
+    name: Deploy to Test Environment
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: test
+      url: http://test.yourdomain.com  # Update with your test URL
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name your-test-cluster-name --region ${{ env.AWS_REGION }}
+
+      - name: Deploy to Kubernetes (Test)
+        run: |
+          kubectl apply -f kubernetes/test/namespace.yaml
+          kubectl apply -f kubernetes/test/configmap.yaml
+          kubectl apply -f kubernetes/test/secret.yaml
+          kubectl apply -f kubernetes/test/postgres-deployment.yaml
+          kubectl apply -f kubernetes/test/app-deployment.yaml
+          kubectl set image deployment/itemsapi-app fastapi-app=${{ env.DOCKER_IMAGE }}:latest -n itemsapi-test
+          kubectl rollout status deployment/itemsapi-app -n itemsapi-test --timeout=5m
+
+      - name: Run smoke tests
+        run: |
+          # Wait for service to be ready
+          sleep 30
+          # Get the service endpoint
+          ENDPOINT=$(kubectl get svc itemsapi-service -n itemsapi-test -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          # Run health check
+          curl -f http://${ENDPOINT}/health || exit 1
+
+  # Stage 6: Deploy to Production Environment
+  deploy-prod:
+    name: Deploy to Production Environment
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: http://prod.yourdomain.com  # Update with your production URL
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name your-prod-cluster-name --region ${{ env.AWS_REGION }}
+
+      - name: Deploy to Kubernetes (Production)
+        run: |
+          kubectl apply -f kubernetes/prod/namespace.yaml
+          kubectl apply -f kubernetes/prod/configmap.yaml
+          kubectl apply -f kubernetes/prod/secret.yaml
+          kubectl apply -f kubernetes/prod/postgres-deployment.yaml
+          kubectl apply -f kubernetes/prod/app-deployment.yaml
+          kubectl set image deployment/itemsapi-app fastapi-app=${{ env.DOCKER_IMAGE }}:latest -n itemsapi-prod
+          kubectl rollout status deployment/itemsapi-app -n itemsapi-prod --timeout=10m
+
+      - name: Run smoke tests
+        run: |
+          # Wait for service to be ready
+          sleep 30
+          # Get the service endpoint
+          ENDPOINT=$(kubectl get svc itemsapi-service -n itemsapi-prod -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          # Run health check
+          curl -f http://${ENDPOINT}/health || exit 1
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "🚀 Production deployment successful!"
+          # Add notification to Slack, email, etc.
+
+  # Stage 7: Rollback on Failure
+  rollback:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [deploy-test, deploy-prod]
+    if: failure()
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Rollback deployment
+        run: |
+          NAMESPACE=${{ github.ref == 'refs/heads/main' && 'itemsapi-prod' || 'itemsapi-test' }}
+          CLUSTER=${{ github.ref == 'refs/heads/main' && 'your-prod-cluster-name' || 'your-test-cluster-name' }}
+          aws eks update-kubeconfig --name ${CLUSTER} --region ${{ env.AWS_REGION }}
+          kubectl rollout undo deployment/itemsapi-app -n ${NAMESPACE}
+          kubectl rollout status deployment/itemsapi-app -n ${NAMESPACE}
