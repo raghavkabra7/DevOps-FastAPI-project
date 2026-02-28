@@ -151,13 +151,13 @@ jobs:
 
   # Stage 4: Deploy to Test Environment
   deploy-test:
-    name: Deploy to Test Environment
+    name: Deploy to Test Environment (itemsapi-test-cluster)
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
     environment:
       name: test
-      url: http://test.yourdomain.com  # Update with your test URL
+      url: http://ad3d84d26d2b44f36a8104c43df88de9-227397310.us-east-1.elb.amazonaws.com
     
     steps:
       - name: Checkout code
@@ -195,11 +195,12 @@ jobs:
           curl -f http://${ENDPOINT}/health || exit 1
 
   # Stage 5: Deploy to Production Environment
+  # NOTE: Disabled due to AWS permission restrictions - only test cluster is accessible
   deploy-prod:
     name: Deploy to Production Environment
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: github.ref == 'refs/heads/main'
+    if: false  # Disabled - AWS session doesn't have production cluster access
     environment:
       name: production
       url: http://prod.yourdomain.com  # Update with your production URL
