@@ -150,11 +150,16 @@ jobs:
           cache-to: type=gha,mode=max
 
   # Stage 4: Deploy to Test Environment
+  # NOTE: Disabled due to AWS session policy restrictions in GitHub Actions
+  # The AWS credentials work locally but have explicit deny for EKS operations in CI/CD
+  # To deploy manually after image is built, run locally:
+  #   kubectl set image deployment/itemsapi-app fastapi-app=raghavkabra7/itemsapi:latest -n itemsapi-test
+  # Or use: ./scripts/deploy-test.sh
   deploy-test:
-    name: Deploy to Test Environment (itemsapi-test-cluster)
+    name: Deploy to Test Environment (DISABLED - For Study)
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+    if: false  # Disabled - AWS session policy blocks EKS access from GitHub Actions
     environment:
       name: test
       url: http://ad3d84d26d2b44f36a8104c43df88de9-227397310.us-east-1.elb.amazonaws.com
@@ -204,11 +209,12 @@ jobs:
           curl -f http://${ENDPOINT}/health || exit 1
 
   # Stage 5: Rollback on Failure
+  # NOTE: Also disabled - only runs if deploy-test fails
   rollback:
-    name: Rollback on Failure
+    name: Rollback on Failure (DISABLED - For Study)
     runs-on: ubuntu-latest
     needs: [deploy-test]
-    if: failure()
+    if: false  # Disabled - depends on deploy-test which is disabled
     
     steps:
       - name: Configure AWS credentials
@@ -224,3 +230,4 @@ jobs:
           aws eks update-kubeconfig --name itemsapi-test-cluster --region ${{ env.AWS_REGION }}
           kubectl rollout undo deployment/itemsapi-app -n itemsapi-test
           kubectl rollout status deployment/itemsapi-app -n itemsapi-test
+
