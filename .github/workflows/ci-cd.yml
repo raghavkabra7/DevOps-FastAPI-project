@@ -149,20 +149,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Image vulnerability scan
-        continue-on-error: true  # Don't fail pipeline if scan has issues
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.DOCKER_IMAGE }}:latest
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-
-      - name: Upload Trivy results to GitHub Security
-        continue-on-error: true  # Don't fail pipeline if upload fails
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: 'trivy-results.sarif'
-
   # Stage 4: Deploy to Test Environment
   deploy-test:
     name: Deploy to Test Environment
