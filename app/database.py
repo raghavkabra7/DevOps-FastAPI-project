@@ -1,4 +1,5 @@
 """Database configuration and session management."""
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -6,10 +7,7 @@ from app.config import settings
 
 # Create database engine
 engine = create_engine(
-    settings.database_url,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20
+    settings.database_url, pool_pre_ping=True, pool_size=10, max_overflow=20
 )
 
 # Create SessionLocal class
@@ -22,7 +20,7 @@ Base = declarative_base()
 def get_db():
     """
     Dependency to get database session.
-    
+
     Yields:
         Session: Database session
     """

@@ -1,4 +1,5 @@
 """Database models."""
+
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Float, DateTime
 from pydantic import BaseModel, Field
@@ -8,9 +9,9 @@ from app.database import Base
 # SQLAlchemy Model
 class ItemModel(Base):
     """Item database model."""
-    
+
     __tablename__ = "items"
-    
+
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String(255), nullable=False, index=True)
     description = Column(String(1000))
@@ -23,7 +24,7 @@ class ItemModel(Base):
 # Pydantic Schemas
 class ItemCreate(BaseModel):
     """Schema for creating an item."""
-    
+
     name: str = Field(..., min_length=1, max_length=255, description="Item name")
     description: str = Field(None, max_length=1000, description="Item description")
     price: float = Field(..., gt=0, description="Item price")
@@ -32,7 +33,7 @@ class ItemCreate(BaseModel):
 
 class ItemUpdate(BaseModel):
     """Schema for updating an item."""
-    
+
     name: str = Field(None, min_length=1, max_length=255, description="Item name")
     description: str = Field(None, max_length=1000, description="Item description")
     price: float = Field(None, gt=0, description="Item price")
@@ -41,7 +42,7 @@ class ItemUpdate(BaseModel):
 
 class ItemResponse(BaseModel):
     """Schema for item response."""
-    
+
     id: int
     name: str
     description: str | None
@@ -49,15 +50,16 @@ class ItemResponse(BaseModel):
     quantity: int
     created_at: datetime
     updated_at: datetime
-    
+
     class Config:
         """Pydantic configuration."""
+
         from_attributes = True
 
 
 class HealthResponse(BaseModel):
     """Schema for health check response."""
-    
+
     status: str
     environment: str
     version: str
