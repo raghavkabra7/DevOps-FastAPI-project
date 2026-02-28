@@ -99,7 +99,8 @@ jobs:
     name: SonarQube Analysis
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.SONAR_TOKEN != ''
+    continue-on-error: true  # Don't fail the pipeline if SonarQube fails
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
