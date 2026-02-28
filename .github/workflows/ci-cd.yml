@@ -171,6 +171,15 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Test AWS Permissions
+        run: |
+          echo "Testing AWS credentials..."
+          aws sts get-caller-identity
+          echo "Attempting to list EKS clusters..."
+          aws eks list-clusters --region ${{ env.AWS_REGION }} || echo "❌ Cannot list EKS clusters"
+          echo "Attempting to describe test cluster..."
+          aws eks describe-cluster --name itemsapi-test-cluster --region ${{ env.AWS_REGION }} --query 'cluster.status' || echo "❌ Cannot describe test cluster - Session policy restriction"
+
       - name: Update kubeconfig
         run: |
           aws eks update-kubeconfig --name itemsapi-test-cluster --region ${{ env.AWS_REGION }}
