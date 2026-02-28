@@ -194,63 +194,11 @@ jobs:
           # Run health check
           curl -f http://${ENDPOINT}/health || exit 1
 
-  # Stage 5: Deploy to Production Environment
-  # NOTE: Disabled due to AWS permission restrictions - only test cluster is accessible
-  deploy-prod:
-    name: Deploy to Production Environment
-    runs-on: ubuntu-latest
-    needs: build-and-push
-    if: false  # Disabled - AWS session doesn't have production cluster access
-    environment:
-      name: production
-      url: http://prod.yourdomain.com  # Update with your production URL
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Update kubeconfig
-        run: |
-          aws eks update-kubeconfig --name itemsapi-prod-cluster --region ${{ env.AWS_REGION }}
-
-      - name: Deploy to Kubernetes (Production)
-        run: |
-          kubectl apply -f kubernetes/prod/namespace.yaml
-          kubectl apply -f kubernetes/prod/configmap.yaml
-          kubectl apply -f kubernetes/prod/secret.yaml
-          kubectl apply -f kubernetes/prod/postgres-deployment.yaml
-          kubectl apply -f kubernetes/prod/app-deployment.yaml
-          kubectl set image deployment/itemsapi-app fastapi-app=${{ env.DOCKER_IMAGE }}:latest -n itemsapi-prod
-          kubectl rollout status deployment/itemsapi-app -n itemsapi-prod --timeout=10m
-
-      - name: Run smoke tests
-        run: |
-          # Wait for service to be ready
-          sleep 30
-          # Get the service endpoint
-          ENDPOINT=$(kubectl get svc itemsapi-service -n itemsapi-prod -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-          # Run health check
-          curl -f http://${ENDPOINT}/health || exit 1
-
-      - name: Notify deployment success
-        if: success()
-        run: |
-          echo "🚀 Production deployment successful!"
-          # Add notification to Slack, email, etc.
-
-  # Stage 6: Rollback on Failure
+  # Stage 5: Rollback on Failure
   rollback:
     name: Rollback on Failure
     runs-on: ubuntu-latest
-    needs: [deploy-test, deploy-prod]
+    needs: [deploy-test]
     if: failure()
     
     steps:
@@ -264,8 +212,6 @@ jobs:
 
       - name: Rollback deployment
         run: |
-          NAMESPACE=${{ github.ref == 'refs/heads/main' && 'itemsapi-prod' || 'itemsapi-test' }}
-          CLUSTER=${{ github.ref == 'refs/heads/main' && 'itemsapi-prod-cluster' || 'itemsapi-test-cluster' }}
-          aws eks update-kubeconfig --name ${CLUSTER} --region ${{ env.AWS_REGION }}
-          kubectl rollout undo deployment/itemsapi-app -n ${NAMESPACE}
-          kubectl rollout status deployment/itemsapi-app -n ${NAMESPACE}
+          aws eks update-kubeconfig --name itemsapi-test-cluster --region ${{ env.AWS_REGION }}
+          kubectl rollout undo deployment/itemsapi-app -n itemsapi-test
+          kubectl rollout status deployment/itemsapi-app -n itemsapi-test
