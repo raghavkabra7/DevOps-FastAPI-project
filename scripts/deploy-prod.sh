@@ -11,7 +11,7 @@ echo "🚀 Starting deployment to PRODUCTION environment..."
 CLUSTER_NAME="itemsapi-prod-cluster"
 AWS_REGION="us-east-1"
 NAMESPACE="itemsapi-prod"
-DOCKER_IMAGE="your-dockerhub-username/itemsapi:latest"
+DOCKER_IMAGE="raghavkabra7/itemsapi:latest"
 
 # Colors for output
 GREEN='\033[0;32m'

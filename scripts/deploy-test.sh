@@ -11,7 +11,7 @@ echo "🚀 Starting deployment to TEST environment..."
 CLUSTER_NAME="itemsapi-test-cluster"
 AWS_REGION="us-east-1"
 NAMESPACE="itemsapi-test"
-DOCKER_IMAGE="your-dockerhub-username/itemsapi:latest"
+DOCKER_IMAGE="raghavkabra7/itemsapi:latest"
 
 # Colors for output
 GREEN='\033[0;32m'
